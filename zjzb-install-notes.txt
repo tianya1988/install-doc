@@ -1,0 +1,630 @@
+测试环境;无外网，啧啧啧！无root啧啧啧！
+
+=========测试环境zookeeper=============
+192.168.160.40
+包传到/data目录下
+
+cd /data
+mkdir /data/soft-package
+
+tar -zxvf apache-zookeeper-3.6.2-bin.tar.gz
+mv /data/apache-zookeeper-3.6.2-bin /data/zookeeper
+
+mkdir -p /data/softdata/zookeeper/data
+mkdir -p /data/softdata/zookeeper/logs
+
+cp /data/zookeeper/conf/zoo_sample.cfg  /data/zookeeper/conf/zoo.cfg
+
+vim /data/zookeeper/conf/zoo.cfg
+添加如下配置：
+    dataDir=/data/softdata/zookeeper/data
+    dataLogDir=/data/softdata/zookeeper/logs
+
+#集群环境(测试环境不需要)
+#    server.0=192.168.160.39:2888:3888
+#    server.1=192.168.160.40:2888:3888
+#    server.2=192.168.160.41:2888:3888
+
+#集群环境(测试环境不需要)
+touch /data/softdata/zookeeper/data/myid
+echo "0" > /data/softdata/zookeeper/data/myid
+
+sudo vim /etc/profile
+    export ZK_HOME=/data/zookeeper
+    export PATH=$PATH:$ZK_HOME/bin
+
+启动：  systemctl start zookeeper
+停止：  systemctl stop zookeeper
+状态：  systemctl status zookeeper
+
+===============测试环境kafka=================
+192.168.160.40
+tar -zxvf kafka_2.12-2.6.0.tgz
+mv kafka_2.12-2.6.0 kafka
+
+mkdir /data/softdata/kafka/kafka-logs
+mkdir /data/softdata/kafka/logs
+
+vim /data/kafka/config/server.properties
+
+    log.dirs=/data/softdata/kafka/kafka-logs
+    num.partitions=3
+    #视
+    #zookeeper.connect=192.168.160.40:2181
+
+mkdir /data/softdata/kafka/logs
+vim /data/kafka/bin/kafka-run-class.sh
+    #195行
+    LOG_DIR=/data/softdata/kafka/logs
+
+
+启动：  systemctl start kafka
+停止：  systemctl stop kafka
+状态：  systemctl status kafka
+
+=============测试环境es===========
+192.168.160.43
+
+mkdir -p /data/softdata/es/data
+mkdir -p /data/softdata/es/logs
+
+/home/app/elasticsearch-7.9.3/config
+
+
+sudo echo '* soft nofile 655360'>> /etc/security/limits.conf
+sudo echo '* hard nofile 655360'>> /etc/security/limits.conf
+sudo echo '* hard nproc  40960'>> /etc/security/limits.conf
+sudo echo '* soft nproc  40960'>> /etc/security/limits.conf
+sudo echo 'es soft memlock unlimited' >> /etc/security/limits.conf
+sudo echo 'es hard memlock unlimited' >> /etc/security/limits.conf
+
+sudo echo 'vm.swappiness=1' >> /etc/sysctl.conf
+sudo echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+
+
+====redis=====
+[base]
+name=CentOS-$releasever - Base
+baseurl=file:///data/soft/Centos/
+gpgcheck=0
+enabled=1
+
+
+nohup ./src/redis-server > redis.log 2>&1 &
+
+
+
+
+
+===== mysql ======
+ 192.168.160.45  3306
+
+mysql：  检查数据库防火墙,先关闭
+mysql -uroot -p
+Dev123!@#
+
+/data/mysql_5.7.32
+/data/mysql_5.7.32/data
+/etc/my.cnf
+/usr/local/mysql/mysql-error.log
+
+sudo service mysqld start
+sudo service mysqld stop
+sudo service mysqld status
+
+
+==============
+192.168.160.39:9876
+
+
+cd /data/rocketmq_4.7.1/bin
+nohup sh mqnamesrv -n 192.168.160.39:9876 > nameServer.log 2>&1 &
+
+cd /data/rocketmq_4.7.1
+nohup sh bin/mqbroker -n 192.168.160.39:9876 -c conf/broker.properties autoCreateTopicEnable=true > broker.log 2>&1 &
+
+
+/data/rocketmq_4.7.1/data
+
+
+=======
+192.168.160.44
+httpd
+/etc/httpd/conf
+/data/install-package/yum
+
+
+
+====== k8s 开发 =====
+10.1.20.103
+10.1.20.106
+10.1.20.107
+
+10.1.20.108:80  harbor地址    admin  Harbor12345
+
+
+
+====== k8s 测试 =====
+192.168.160.125:11180  harbor地址  admin  Harbor12345
+
+mysql：  检查数据库防火墙
+mysql  192.168.160.2    root/Atest123
+
+机器ip：
+192.168.160.8   k8s-test-node01
+192.168.160.9   k8s-test-node02
+192.168.160.10  k8s-test-node03
+
+####################### begin #######################
+配置/etc/hosts
+192.168.160.8   k8s-test-node01
+192.168.160.9   k8s-test-node02
+192.168.160.10  k8s-test-node03
+
+#关闭防火墙
+sudo systemctl stop firewalld
+sudo systemctl disable firewalld
+sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+sudo setenforce 0
+
+分别执行下述命令，检查防火墙状态及配置
+sudo systemctl status firewalld.service
+sudo iptables -L
+sudo getenforce
+
+
+2.4	设置 系统Limits限制
+sudo su -   #(临时切到root权限，否则前三条权限不够)
+    echo -e "*\thard\tnofile\t1048576" >> /etc/security/limits.conf
+    echo -e "*\tsoft\tnofile\t655350" >> /etc/security/limits.conf
+    echo -e "*\tsoft\tcore\t10000000" >> /etc/security/limits.conf
+    /bin/sed -i 's/nproc     4096/nproc     65535/g' /etc/security/limits.d/20-nproc.conf
+    /bin/sed -i 's/#DefaultLimitNOFILE=/DefaultLimitNOFILE=655350/g' /etc/systemd/system.conf
+    /bin/sed -i 's/#DefaultLimitNPROC=/DefaultLimitNPROC=65535/g' /etc/systemd/system.conf
+exit  #退出root用户
+
+
+2.5	禁用SWAP(只在运行K8S相关组件的服务器上执行)
+sudo su -   #(临时切到root权限，否则前三条权限不够)
+    swapoff -a
+    /bin/sed -i "s/.*swap.*/#&/" /etc/fstab
+    /bin/sed -i "s/.*swappiness.*/#&/" /etc/sysctl.conf
+    /bin/echo -e "vm.swappiness = 0" >> /etc/sysctl.conf
+exit  #退出root用户
+
+2.6	开启IP转发(只在运行K8S相关组件的服务器上执行)
+sudo su -   #(临时切到root权限，否则前三条权限不够)
+    cat >> /etc/sysctl.conf << EOF
+    net.ipv4.ip_forward = 1
+    net.bridge.bridge-nf-call-iptables = 1
+    EOF
+exit  #退出root用户
+
+
+#安装docker
+unzip docker1903.zip 
+cd docker1903
+sudo rpm -ivh *.rpm --force --nodeps
+
+
+第二步：配置docker registry
+sudo mkdir -p /etc/docker/
+sudo touch /etc/docker/daemon.json
+sudo su -
+    cat > /etc/docker/daemon.json<<EOF
+    {
+    "registry-mirrors": [
+        "https://bxsfpjcb.mirror.aliyuncs.com"
+    ],
+    "max-concurrent-downloads": 10,
+    "log-driver": "json-file",
+    "log-level": "warn",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+        },
+    "insecure-registries":
+            ["127.0.0.1","192.168.160.125:11180"],
+    "data-root":"/var/lib/docker"
+    }
+    EOF
+
+
+    groupadd docker
+    usermod -aG docker app
+    systemctl restart docker
+exit
+
+sudo docker login 192.168.160.125:11180
+sudo docker push 192.168.160.125:11180/public/xxl-job:1102
+
+#查看harbor地址中public项目是否存在
+curl -u "admin:Harbor12345" -XGET -H "Content-Type:application/json" "http://192.168.160.125:11180/api/projects"
+没有public，则创建
+curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://10.4.7.200:180/api/projects" -d @createproject.json
+ cat createproject.json 
+ {
+  "project_name": "public",
+  "public": 1
+}
+
+
+2.8	配置java环境
+#第一步：解压文件到对应目录
+#tar -zxvf /data/install-tools/jdk-8u131-linux-x64.tar.gz -C /usr/java/
+  
+第二步：配置Java环境变量
+#vim /etc/profile
+    在最后一行加入
+    export JAVA_HOME=/data/jdk1.8.0_131
+    export JRE_HOME=${JAVA_HOME}/jre
+    export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib:$CLASSPATH
+    export JAVA_PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin
+    export PATH=$PATH:${JAVA_PATH}
+
+第三步：加载环境变量
+#source /etc/profile
+
+查看系统变量软连接，如果不对，则删除重建：
+    ll /usr/bin/java
+    rm /usr/bin/java
+    sudo ln -s  /data/jdk1.8.0_131/bin/java  /usr/bin/java
+
+
+4.2	部署集群环境
+
+chmod 777 /data/ccbscf
+sudo cp /data/ccbscf /usr/bin/sealos
+
+#包里已有installk8s.sh，则跳过此步骤
+touch installk8s.sh
+vim installk8s.sh
+        #!/bin/bash
+        sudo sealos  $@  >> /data/k8sinstall.log 2>&1
+        MYFILE=/data/k8sinstall.log
+        ERRCODE=`tail $MYFILE | grep  '98488045' | wc -l `
+        NUM=17
+        MAX=`sed -n '$=' $MYFILE `
+        if [ $ERRCODE == 1 ];then 
+            let SLINE=MAX-NUM+1
+            sudo sed -i $SLINE',$d' $MYFILE
+            sudo echo "successd"
+        else
+            sudo echo "Install Failed ！ See /data/k8sinstall.log"
+        fi
+
+node1 需要与node1 node2 node3 打通ssh免秘钥登录
+
+    ssh-keygen
+    touch authorized_keys
+    将所有机器的id_rsa.pub 全部放置到authorized_keys
+    chmod 700 ~/.ssh
+    chmod 600 ~/.ssh/authorized_keys
+
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    vim /etc/ssh/sshd_config
+        PermitRootLogin yes   #修改
+        StrictModes no        #去掉注解，并修改
+        RSAAuthentication yes #添加
+        PubkeyAuthentication yes #添加
+
+    systemctl restart sshd
+
+sh installk8s.sh init --master 192.168.160.8 \
+    --node 192.168.160.9 \
+    --node 192.168.160.10 \
+    --version v1.19.0 \
+    --pkg-url /data/kube1.19.0.tar.gz
+
+vim /etc/kubernetes/manifests/kube-controller-manager.yaml
+注释 - --port=0
+#    - --port=0
+
+vim /etc/kubernetes/manifests/kube-scheduler.yaml
+注释 - --port=0
+#    - --port=0
+
+
+systemctl restart kubelet
+
+
+docker load -i apollo.tar
+docker load -i xxl-job.tar
+
+docker tag e3cbbab10a6e   192.168.160.125:11180/public/apollo:v1.3
+docker rmi 12.0.217.11:11180/public/apollo:v1.3
+docker tag 66e7e874a96e 192.168.160.125:11180/public/xxl-job:1102
+docker rmi 12.0.217.11:11180/public/xxl-job:1102
+
+数据库机器导入初始化脚本：
+    source /data/sql/createuserapollo.sql
+    source /data/sql/createuserxxl.sql
+    source /data/sql/initconfig.sql
+    source /data/sql/initportal.sql
+    source /data/sql/xxl-1.1.sql
+
+
+修改数据库地址:
+    vim apollo-dev.yml
+        修改镜像地址以及：
+        env:
+        - name: DEV_DB
+          value: jdbc:mysql://192.168.160.2:3306/ApolloConfigDB?characterEncoding=utf8
+        - name: DEV_DB_USER
+          value: apollo
+        - name: DEV_DB_PWD
+          value: "jxrt@123"
+        - name: DEV_LB
+          value: apollosvc
+
+    vim apollo-portal.yml
+        修改镜像地址以及：
+        env:
+        - name: PORTAL_DB
+          value: jdbc:mysql://192.168.160.2:3306/ApolloPortalDB?characterEncoding=utf8
+        - name: PORTAL_DB_USER
+          value: apollo
+        - name: PORTAL_DB_PWD
+          value: "jxrt@123"
+        - name: DEV_URL
+          value: http://apollosvc:8080
+
+    mv ccbscfconfig.yml zjzbconfig.yml
+    vim zjzbconfig.yml
+        修改镜像地址以及：
+        mysql_url: "jdbc:mysql://192.168.160.2:3306/xxljob?useUnicode=true&characterEncoding=UTF-8&useSSL=false"
+        mysql_user: root
+        mysql_password: "Atest123"
+ 
+    vim xxl.yml
+        修改镜像地址
+
+启动服务：
+    sudo kubectl apply -f /data/k8s-yaml/apollo-dev.yml
+    sudo kubectl apply -f /data/k8s-yaml/apollo-portal.yml
+
+    sudo kubectl apply -f /data/k8s-yaml/zjzbconfig.yml
+    sudo kubectl apply -f /data/k8s-yaml/xxl.yml
+
+查看服务状态：
+[app@k8s-pre-node01 k8s-yaml]$ sudo kubectl get pods
+NAME                             READY   STATUS    RESTARTS   AGE
+apollo-dev-6b58f568d4-lq6qd      1/1     Running   0          6m36s
+apollo-portal-5947966f76-w8wzl   1/1     Running   0          6m28s
+xxl-job-admin-6df4b8564c-zxvw9   1/1     Running   0          6m11s
+查看某pod的日志：
+    sudo kubectl logs  apollo-dev-5b5974c769-7hbcp
+
+重启集群：(此操作未实验)
+systemctl restart docker  #因为k8s中的服务都是在docker中部署的。
+
+
+
+#恢复sshd配置文件
+mv authorized_keys authorized_keys.bak
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.nopw
+cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+systemctl restart sshd
+
+
+
+====== k8s 预生产 =====
+192.168.160.125:11180  harbor地址  admin  Harbor12345
+
+
+mysql：  检查数据库防火墙
+192.168.160.14
+192.168.160.15
+192.168.160.16
+mysql -uroot -h 127.0.0.1 -p     root/Zjzb123!@#
+
+机器ip：
+192.168.160.28   k8s-pre-node01     master
+192.168.160.29   k8s-pre-node02     master
+192.168.160.30   k8s-pre-node03     master
+192.168.160.31   k8s-pre-node04
+192.168.160.32   k8s-pre-node05
+192.168.160.33   k8s-pre-node06
+192.168.160.34   k8s-pre-node07
+
+
+sh installk8s.sh init --master 192.168.160.28 \
+    --master 192.168.160.29 \
+    --master 192.168.160.30 \
+    --node 192.168.160.31 \
+    --node 192.168.160.32 \
+    --node 192.168.160.33 \
+    --node 192.168.160.34 \
+    --version v1.19.0 \
+    --pkg-url /data/k8s-install/kube1.19.0.tar.gz
+
+
+
+
+*****还未恢复sshd配置文件****
+
+
+=================== CDH 5.16.2 测试 ===============
+192.168.160.79    hadoop-test-01      master
+192.168.160.80    hadoop-test-02
+192.168.160.81    hadoop-test-03
+192.168.160.82    hadoop-test-04
+192.168.160.83    hadoop-test-05
+
+------------------
+
+各个节点执行：
+    配置 /etc/hosts
+
+    配置jdk环境
+
+    关闭防火墙
+    sudo systemctl stop firewalld
+    sudo systemctl disable firewalld
+
+    关闭SELINUX
+    sudo vi /etc/selinux/config
+    SELINUX=disabled
+
+1.5.	cloudera-manager安装
+
+在主节点执行：
+    解压CDH5.16.2.tar.gz
+
+    scp cloudera-manager-centos7-cm5.16.2_x86_64.tar.gz app@192.168.160.80:/data/
+    scp cloudera-manager-centos7-cm5.16.2_x86_64.tar.gz app@192.168.160.81:/data/
+    scp cloudera-manager-centos7-cm5.16.2_x86_64.tar.gz app@192.168.160.82:/data/
+    scp cloudera-manager-centos7-cm5.16.2_x86_64.tar.gz app@192.168.160.83:/data/
+
+各个节点执行：
+    tar cloudera-manager-centos7-cm5.16.2_x86_64.tar.gz
+    vim cm-5.16.2/etc/cloudera-scm-agent/config.ini
+        修改 server_host=hadoop-test-01
+
+在主节点执行：
+    cp CDH5.16.2/CDH-5.16.2-1.cdh5.16.2.p0.8-el7.parcel /data/cloudera/parcel-repo/
+    cp CDH5.16.2/CDH-5.16.2-1.cdh5.16.2.p0.8-el7.parcel.sha1 /data/cloudera/parcel-repo/CDH-5.16.2-1.cdh5.16.2.p0.8-el7.parcel.sha
+    cp CDH5.16.2/manifest.json /data/cloudera/parcel-repo/
+    ll /data/cloudera/parcel-repo/
+        -rwxr-x--- 1 app app 2132782197 Nov 27 15:30 CDH-5.16.2-1.cdh5.16.2.p0.8-el7.parcel
+        -rwxr-x--- 1 app app         40 Dec  1 09:46 CDH-5.16.2-1.cdh5.16.2.p0.8-el7.parcel.sha
+        -rwxr-x--- 1 app app      66804 Dec  1 09:47 manifest.json
+
+
+
+1.6.	创建cloudera-manager用户(到此未执行)
+
+
+
+
+
+=========== C-RocketMQ 多master集群 ==============
+192.168.160.5  
+192.168.160.77
+192.168.160.78
+
+序号	IP地址	     主机名   用户	           角色	                模式
+1	192.168.160.5 	redis1	root	nameServer1,brokerServer1	Master1
+2	192.168.160.77	redis2	root	nameServer2,brokerServer2	Master2
+3	192.168.160.78	redis3	root	nameServer3,brokerServer3	Master3
+
+----
+配置hosts
+    192.168.160.5   redis1
+    192.168.160.77  redis2
+    192.168.160.78  redis3
+
+    192.168.160.5     rocketmq-nameserver-1
+    192.168.160.5     rocketmq-broker-m1
+    192.168.160.77    rocketmq-nameserver-2
+    192.168.160.77    rocketmq-broker-m2
+    192.168.160.78    rocketmq-nameserver-3
+    192.168.160.78    rocketmq-broker-m3
+
+关闭防火墙:
+    sudo systemctl stop firewalld
+    sudo systemctl disable firewalld
+    sudo systemctl status firewalld
+
+配置jdk环境：
+sudo vim /etc/profile
+    export JAVA_HOME=/data/java
+    export PATH=$PATH:${JAVA_HOME}/bin
+
+在/data目录下:
+    unzip rocketmq-all-4.7.1-bin-release.zip
+    mv rocketmq-all-4.7.1-bin-release rocketmq
+
+酌情修改启动占用内存:
+vim /data/rocketmq/bin/runbroker.sh   #(此环境未做修改,默认值如下)
+    JAVA_OPT="${JAVA_OPT} -server -Xms8g -Xmx8g -Xmn4g"
+
+修改broker启动配置:
+vim /data/rocketmq/conf/broker.conf
+
+替换日志目录配置:(把xml文件中的 '${user.home}' 替换为 '/data')
+sed -i  's#${user.home}#/data#g'  /data/rocketmq/conf/*.xml
+
+创建数据目录:
+mkdir -p /data/mq-store
+mkdir -p /data/mq-store/commitlog
+mkdir -p /data/mq-store/consumequeue
+mkdir -p /data/mq-store/index
+mkdir -p /data/mq-store/abort
+
+修改配置文件：
+/data/rocketmq/conf/2m-noslave  **注意配置文件目录**
+
+192.168.160.5
+vim /data/rocketmq/conf/2m-noslave/broker-a.properties
+
+192.168.160.77
+vim /data/rocketmq/conf/2m-noslave/broker-b.properties
+
+192.168.160.78
+vim /data/rocketmq/conf/2m-noslave/broker-c.properties
+
+--------------------------------
+brokerClusterName=rocketmq-3m-cluster
+brokerName=rocketmq-broker-m1  ########## rocketmq-broker-m1 或者 rocketmq-broker-m1 #############
+brokerId=0
+namesrvAddr=192.168.160.5:9876;192.168.160.77:9876;192.168.160.78:9876
+defaultTopicQueueNums=6
+messageIndexSafe=true
+autoCreateTopicEnable=true
+autoCreateSubscriptionGroup=true
+waitTimeMillsInSendQueue=5000
+listenPort=10911
+deleteWhen=04
+fileReservedTime=168
+#单个conmmitlog文件大小默认1GB
+mapedFileSizeCommitLog=1073741824
+mapedFileSizeConsumeQueue=6000000
+#commitlog目录所在分区的最大使用比例，如果commitlog目录所在的分区使用比例大于该值，则触发过期文件删除
+diskMaxUsedSpaceRatio=88
+#默认允许的最大消息体默认4M,4194304
+#maxMessageSize=65536
+sendMessageThreadPoolNums=4
+pullMessageThreadPoolNums=4
+useReentrantLockWhenPutMessage=true
+defaultReadQueueNums=16
+defaultWriteQueueNums=16
+storePathRootDir=/data/mq-store
+storePathCommitLog=/data/mq-store/commitlog
+storePathConsumeQueue=/data/mq-store/consumequeue
+storePathIndex=/data/mq-store/index
+storeCheckpoint=/data/mq-store/checkpoint
+abortFile=/data/mq-store/abort
+brokerRole=ASYNC_MASTER
+#刷盘方式,默认为 ASYNC_FLUSH(异步刷盘),可选值SYNC_FLUSH(同步刷盘)
+flushDiskType=ASYNC_FLUSH
+--------------------------------------------------
+#启动
+cd /data/rocketmq/bin
+nohup sh mqnamesrv >> mqnamesrv.log 2>&1 &
+nohup sh mqbroker -c /data/rocketmq/conf/2m-noslave/broker-a.properties >> mqbroker.log 2>&1 &
+
+nohup sh mqnamesrv >> mqnamesrv.log 2>&1 &
+nohup sh mqbroker -c /data/rocketmq/conf/2m-noslave/broker-b.properties >> mqbroker.log 2>&1 &
+
+nohup sh mqnamesrv >> mqnamesrv.log 2>&1 &
+nohup sh mqbroker -c /data/rocketmq/conf/2m-noslave/broker-c.properties >> mqbroker.log 2>&1 &
+
+#验证nameserver
+ps -ef | grep mqnamesrv
+netstat -ntlp | grep 9876
+
+#验证broker
+ps -ef | grep broker
+netstat -ntlp | grep 10911
+
+#关闭broker
+sh mqshutdown broker
+
+#关闭nameserver
+sh mqshutdown namesrv
+
+===环境配置===
+yum源ip： 192.168.160.125
+申请： 192.168.160.125上开放5000
+
