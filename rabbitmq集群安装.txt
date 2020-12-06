@@ -1,0 +1,88 @@
+rabbitmq集群安装
+版本3.6.12
+
+
+
+三台服务器的主机名分别设置成rabbitmaster、rabbitnode1、rabbitnode2
+
+三台服务器分别配置hosts
+vim /etc/hosts
+192.168.160.25 rabbitmaster
+192.168.160.26 rabbitnode1
+192.168.160.27 rabbitnode2
+
+
+上传文件至 /data/install-tools/
+cd /data/install-tools/
+
+sudo rpm -ivh erlang-19.0.4-1.el7.centos.x86_64.rpm 
+sudo rpm -ivh socat-1.7.3.2-2.el7.x86_64.rpm 
+xz -d rabbitmq-server-generic-unix-3.6.12.tar.xz 
+tar -xvf rabbitmq-server-generic-unix-3.6.12.tar
+
+把rabbitmq目录放到/opt下
+sudo cp -r /data/install-tools/rabbitmq_server-3.6.12 /opt && sudo chown -R app:app /opt/rabbitmq_server-3.6.12
+
+编辑 /etc/profile
+#在末尾加入以下配置
+export PATH=$PATH:/opt/rabbitmq_server-3.6.12/sbin
+
+#更新配置文件
+source /etc/profile
+
+
+rabbitmqctl change_password 用户名 密码
+rabbitmqctl set_permission -p / 用户名(admin) ".*" ".*" ".*"
+
+rabbitmq的基本操作：
+启动：rabbitmq-server -detached
+关闭：rabbitmqctl stop
+查看状态：rabbitmqctl status
+
+
+rabbitmqctl add_user admin admin，设置账户密码为admin admin
+rabbitmqctl set_user_tags admin administrator，设置admin为管理员权限
+
+删除guest用户
+rabbitmqctl delete_user guest
+
+
+
+启用rabbitmq网页管理插件
+rabbitmq-plugins enable rabbitmq_management
+列出启用的管理插件
+rabbitmq-plugins list
+
+访问管理页面：http://ip:15672 端口默认为15672
+
+列出用户： rabbitmqctl list_users
+删除用户： rabbitmqctl delete_user username
+
+常用命令参考
+https://www.cnblogs.com/potato-chip/p/9977386.html
+
+
+
+2、集群配置
+
+在node1和node2上分别停止rabbitmq： rabbitmqctl stop
+
+同步master的erlang.cookie到node1和node2上,erlang.cookie的位置在用户家目录下
+
+在node1和node2上分别启动rabbitmq： rabbitmq-server -detached
+
+在node1和node2上分别停止应用： rabbitmqctl stop_app
+
+在node1和node2上分别将master加入到集群： rabbitmqctl join_cluster rabbit@rabbitmaster
+
+在node1和node2上分别启动应用： rabbitmqctl start_app
+
+在master节点上停止应用： rabbitmqctl stop_app
+
+在master节点上将node1和node2加入到集群: 
+rabbitmqctl join_cluster rabbit@rabbitnode1 
+rabbitmqctl join_cluster rabbit@rabbitnode2
+
+在master节点上启动应用： rabbitmqctl start_app
+
+查看集群状态： rabbitmqctl cluster_status

@@ -113,7 +113,7 @@ sudo service mysqld stop
 sudo service mysqld status
 
 
-==============
+==========================================================
 192.168.160.39:9876
 
 
@@ -127,7 +127,7 @@ nohup sh bin/mqbroker -n 192.168.160.39:9876 -c conf/broker.properties autoCreat
 /data/rocketmq_4.7.1/data
 
 
-=======
+===========================================================
 192.168.160.44
 httpd
 /etc/httpd/conf
@@ -135,7 +135,7 @@ httpd
 
 
 
-====== k8s 开发 =====
+======================================= k8s 开发 =====================================
 10.1.20.103
 10.1.20.106
 10.1.20.107
@@ -144,7 +144,7 @@ httpd
 
 
 
-====== k8s 测试 =====
+======================================= k8s 测试 =====================================
 192.168.160.125:11180  harbor地址  admin  Harbor12345
 
 mysql：  检查数据库防火墙
@@ -194,10 +194,11 @@ exit  #退出root用户
 
 2.6	开启IP转发(只在运行K8S相关组件的服务器上执行)
 sudo su -   #(临时切到root权限，否则前三条权限不够)
-    cat >> /etc/sysctl.conf << EOF
-    net.ipv4.ip_forward = 1
-    net.bridge.bridge-nf-call-iptables = 1
-    EOF
+#必须顶格写
+cat >> /etc/sysctl.conf << EOF
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
 exit  #退出root用户
 
 
@@ -211,23 +212,39 @@ sudo rpm -ivh *.rpm --force --nodeps
 sudo mkdir -p /etc/docker/
 sudo touch /etc/docker/daemon.json
 sudo su -
-    cat > /etc/docker/daemon.json<<EOF
-    {
-    "registry-mirrors": [
-        "https://bxsfpjcb.mirror.aliyuncs.com"
-    ],
-    "max-concurrent-downloads": 10,
-    "log-driver": "json-file",
-    "log-level": "warn",
-    "log-opts": {
-        "max-size": "10m",
-        "max-file": "3"
-        },
-    "insecure-registries":
-            ["127.0.0.1","192.168.160.125:11180"],
-    "data-root":"/var/lib/docker"
-    }
-    EOF
+
+#开发、测试、准生产如下：
+cat > /etc/docker/daemon.json<<EOF
+{
+"registry-mirrors": [
+    "https://bxsfpjcb.mirror.aliyuncs.com"
+],
+"max-concurrent-downloads": 10,
+"log-driver": "json-file",
+"log-level": "warn",
+"log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+    },
+"insecure-registries": ["127.0.0.1","192.168.160.125:11180"],
+"data-root":"/var/lib/docker"
+}
+EOF
+
+#生产环境如下：
+cat > /etc/docker/daemon.json<<EOF
+{
+"max-concurrent-downloads": 10,
+"log-driver": "json-file",
+"log-level": "warn",
+"log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+    },
+"insecure-registries": ["127.0.0.1","192.168.160.125:11180"],
+"data-root":"/data/var/lib/docker"
+}
+EOF
 
 
     groupadd docker
@@ -241,12 +258,12 @@ sudo docker push 192.168.160.125:11180/public/xxl-job:1102
 #查看harbor地址中public项目是否存在
 curl -u "admin:Harbor12345" -XGET -H "Content-Type:application/json" "http://192.168.160.125:11180/api/projects"
 没有public，则创建
-curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://10.4.7.200:180/api/projects" -d @createproject.json
+curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://192.168.160.125:11180/api/projects" -d @createproject.json
  cat createproject.json 
  {
   "project_name": "public",
   "public": 1
-}
+ }
 
 
 2.8	配置java环境
@@ -316,6 +333,17 @@ sh installk8s.sh init --master 192.168.160.8 \
     --version v1.19.0 \
     --pkg-url /data/kube1.19.0.tar.gz
 
+输出"successd"，代表安装成功
+
+验证：
+kubectl get cs
+kubectl get pods -n kube-system
+    
+
+#如果出现错误可以清除后重装，命令如下：
+    sh installk8s.sh clean --all
+
+
 vim /etc/kubernetes/manifests/kube-controller-manager.yaml
 注释 - --port=0
 #    - --port=0
@@ -346,7 +374,9 @@ docker rmi 12.0.217.11:11180/public/xxl-job:1102
 
 修改数据库地址:
     vim apollo-dev.yml
+        
         修改镜像地址以及：
+
         env:
         - name: DEV_DB
           value: jdbc:mysql://192.168.160.2:3306/ApolloConfigDB?characterEncoding=utf8
@@ -358,7 +388,11 @@ docker rmi 12.0.217.11:11180/public/xxl-job:1102
           value: apollosvc
 
     vim apollo-portal.yml
+
         修改镜像地址以及：
+
+            image: 192.168.160.125:11180/public/apollo:v1.3
+
         env:
         - name: PORTAL_DB
           value: jdbc:mysql://192.168.160.2:3306/ApolloPortalDB?characterEncoding=utf8
@@ -371,10 +405,14 @@ docker rmi 12.0.217.11:11180/public/xxl-job:1102
 
     mv ccbscfconfig.yml zjzbconfig.yml
     vim zjzbconfig.yml
-        修改镜像地址以及：
         mysql_url: "jdbc:mysql://192.168.160.2:3306/xxljob?useUnicode=true&characterEncoding=UTF-8&useSSL=false"
         mysql_user: root
         mysql_password: "Atest123"
+
+        #生产环境如下:
+        mysql_url: "jdbc:mysql://192.168.161.3:3306/xxljob?useUnicode=true&characterEncoding=UTF-8&useSSL=false"
+        mysql_user: "xxljob"
+        mysql_password: "xxljob"
  
     vim xxl.yml
         修改镜像地址
@@ -395,21 +433,26 @@ xxl-job-admin-6df4b8564c-zxvw9   1/1     Running   0          6m11s
 查看某pod的日志：
     sudo kubectl logs  apollo-dev-5b5974c769-7hbcp
 
-重启集群：(此操作未实验)
+重启集群：
 systemctl restart docker  #因为k8s中的服务都是在docker中部署的。
+systemctl restart kubelet  #此操作可以不执行
 
 
 
 #恢复sshd配置文件
-mv authorized_keys authorized_keys.bak
+
+cd /root/.ssh/ && mv authorized_keys authorized_keys.bak
+
 cp /etc/ssh/sshd_config /etc/ssh/sshd_config.nopw
 cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+
 systemctl restart sshd
 
 
 
-====== k8s 预生产 =====
-192.168.160.125:11180  harbor地址  admin  Harbor12345
+============================ k8s 预生产 ==============================
+harbor地址:
+192.168.160.125:11180   admin  Harbor12345
 
 
 mysql：  检查数据库防火墙
@@ -417,6 +460,7 @@ mysql：  检查数据库防火墙
 192.168.160.15
 192.168.160.16
 mysql -uroot -h 127.0.0.1 -p     root/Zjzb123!@#
+
 
 机器ip：
 192.168.160.28   k8s-pre-node01     master
@@ -438,13 +482,121 @@ sh installk8s.sh init --master 192.168.160.28 \
     --version v1.19.0 \
     --pkg-url /data/k8s-install/kube1.19.0.tar.gz
 
+============================ k8s 生产 ==============================
+mysql:
+192.168.161.3:3306   主   root/Zjzb123!@#      登录方式：mysql -uroot -h127.0.0.1 -p
+192.168.161.4:3306
+192.168.161.5:3306
+
+harbor地址:
+192.168.160.125:11180   admin  Harbor12345
+
+
+192.168.161.17    k8s-product-node01     master
+192.168.161.18    k8s-product-node02     master
+192.168.161.19    k8s-product-node03     master
+192.168.161.20    k8s-product-node04
+192.168.161.21    k8s-product-node05
+192.168.161.22    k8s-product-node06
+192.168.161.23    k8s-product-node07
+
+sh installk8s.sh init --master 192.168.161.17 \
+    --master 192.168.161.18 \
+    --master 192.168.161.19 \
+    --node 192.168.161.20 \
+    --node 192.168.161.21 \
+    --node 192.168.161.22 \
+    --node 192.168.161.23 \
+    --version v1.19.0 \
+    --pkg-url /data/k8s-install/kube1.19.0.tar.gz
+
+
+============================ NFS  beginning ==============================
+测试环境:
+192.168.160.11	NFS磁盘共享
+
+#预生产
+192.168.160.35	NFS磁盘共享
+
+#生产环境
+192.168.161.24	NFS磁盘共享
+
+
+----------------------------------------------------
+
+systemctl stop firewalld
+
+unzip nfs.zip
+cd nfs
+sudo rpm -ivh *.rpm --force --nodeps
+
+sudo su -
+mkdir -p /data/nfsdata/ca
+mkdir -p /data/nfsdata/cupload
+mkdir -p /data/nfsdata/cuploadarch1
+mkdir -p /data/nfsdata/cuploadarch2
+mkdir -p /data/nfsdata/log
+mkdir -p /data/nfsdata/mariadb
+mkdir -p /data/nfsdata/mysql
+mkdir -p /data/nfsdata/rabbitmq
+mkdir -p /data/nfsdata/redis
+
+vim  /etc/exports
+/data/nfsdata/cupload *(rw,no_root_squash,sync)
+/data/nfsdata/cuploadarch1 *(rw,no_root_squash,sync)
+/data/nfsdata/cuploadarch2 *(rw,no_root_squash,sync)
+/data/nfsdata/log *(rw,no_root_squash,sync)
+/data/nfsdata/ca *(rw,no_root_squash,sync)
+
+
+systemctl restart rpcbind
+systemctl restart nfs
+
+检查nfs是否正常
+systemctl status nfs
+showmount -e
+
+nfs配置文件增加挂载路径后需要server端执行
+exportfs -r
 
 
 
-*****还未恢复sshd配置文件****
+在k8s集群中的 所有work 节点上操作：
+/data/install-packages/nfs-client
+rpm -ivh *.rpm --force --nodeps
+
+vim /etc/fstab
+
+192.168.161.24:/data/nfsdata/ca /app/credit/ca  nfs     defaults        0       0
+192.168.161.24:/data/nfsdata/cupload     /cupload        nfs     defaults        0       0
+192.168.161.24:/data/nfsdata/cuploadarch2     /cuploadarch2         nfs     defaults        0       0
+192.168.161.24:/data/nfsdata/cuploadarch1     /cuploadarch1        nfs     defaults        0       0
+192.168.161.24:/data/nfsdata/log     /app/log        nfs     defaults        0       0
 
 
-=================== CDH 5.16.2 测试 ===============
+mkdir -p /app/credit/ca
+mkdir -p /cupload
+mkdir /cuploadarch2
+mkdir /cuploadarch1
+mkdir /app/log
+
+mount -a
+
+#验证
+在任意work节点上某个目录下创建个文件，然后查看nfs服务器上对于的目录下是否同步。
+例如,在任意一个work节点上：
+echo 'zxl' >> /app/log/test.txt
+
+在nfs server端查看对应的同步目录
+cat /data/nfsdata/log/test.txt   #内容同样为 zxl
+
+
+
+============================ NFS 生产 ending =================================
+
+
+
+================================= CDH 5.16.2 测试 ==============================
 192.168.160.79    hadoop-test-01      master
 192.168.160.80    hadoop-test-02
 192.168.160.81    hadoop-test-03
@@ -498,7 +650,9 @@ sh installk8s.sh init --master 192.168.160.28 \
 
 
 
-=========== C-RocketMQ 多master集群 ==============
+================================ C-RocketMQ 多master集群 beginning ================================
+--------------
+#预生产
 192.168.160.5  
 192.168.160.77
 192.168.160.78
@@ -508,17 +662,38 @@ sh installk8s.sh init --master 192.168.160.28 \
 2	192.168.160.77	redis2	root	nameServer2,brokerServer2	Master2
 3	192.168.160.78	redis3	root	nameServer3,brokerServer3	Master3
 
-----
+
+-------------------
+#生产
+192.168.161.12
+192.168.161.51
+192.168.161.52
+
+序号	IP地址	     主机名   用户	           角色	                模式
+1	192.168.161.12 	redis1	root	nameServer1,brokerServer1	Master1
+2	192.168.161.51	redis2	root	nameServer2,brokerServer2	Master2
+3	192.168.161.52	redis3	root	nameServer3,brokerServer3	Master3
+
+
+/etc/hosts文件内容如下：
+192.168.161.12    redis-rocketmq-node1
+192.168.161.51    redis-rocketmq-node2
+192.168.161.52    redis-rocketmq-node3
+
+192.168.161.12    rocketmq-broker-m1
+192.168.161.51    rocketmq-broker-m2
+192.168.161.52    rocketmq-broker-m3
+
+---------------------------------------------------------
+预生产示例如下：
+
 配置hosts
     192.168.160.5   redis1
     192.168.160.77  redis2
     192.168.160.78  redis3
 
-    192.168.160.5     rocketmq-nameserver-1
     192.168.160.5     rocketmq-broker-m1
-    192.168.160.77    rocketmq-nameserver-2
     192.168.160.77    rocketmq-broker-m2
-    192.168.160.78    rocketmq-nameserver-3
     192.168.160.78    rocketmq-broker-m3
 
 关闭防火墙:
@@ -531,6 +706,10 @@ sudo vim /etc/profile
     export JAVA_HOME=/data/java
     export PATH=$PATH:${JAVA_HOME}/bin
 
+    ll /usr/bin/java
+    rm /usr/bin/java
+    sudo ln -s  /data/java/bin/java  /usr/bin/java
+
 在/data目录下:
     unzip rocketmq-all-4.7.1-bin-release.zip
     mv rocketmq-all-4.7.1-bin-release rocketmq
@@ -539,20 +718,19 @@ sudo vim /etc/profile
 vim /data/rocketmq/bin/runbroker.sh   #(此环境未做修改,默认值如下)
     JAVA_OPT="${JAVA_OPT} -server -Xms8g -Xmx8g -Xmn4g"
 
-修改broker启动配置:
-vim /data/rocketmq/conf/broker.conf
-
+#创建日志目录
+mkdir -p /data/logs
 替换日志目录配置:(把xml文件中的 '${user.home}' 替换为 '/data')
 sed -i  's#${user.home}#/data#g'  /data/rocketmq/conf/*.xml
 
-创建数据目录:
+#创建数据目录:
 mkdir -p /data/mq-store
 mkdir -p /data/mq-store/commitlog
 mkdir -p /data/mq-store/consumequeue
 mkdir -p /data/mq-store/index
 mkdir -p /data/mq-store/abort
 
-修改配置文件：
+修改broker启动配置文件：
 /data/rocketmq/conf/2m-noslave  **注意配置文件目录**
 
 192.168.160.5
@@ -623,8 +801,310 @@ sh mqshutdown broker
 
 #关闭nameserver
 sh mqshutdown namesrv
+================================ C-RocketMQ 多master集群 ending ================================
 
-===环境配置===
-yum源ip： 192.168.160.125
-申请： 192.168.160.125上开放5000
+
+
+
+
+================================ C-redis beginning ================================
+#生产环境
+
+192.168.161.12    redis-rocketmq-node1         ***(redis master)
+192.168.161.51    redis-rocketmq-node2         ***(redis slave0)
+192.168.161.52    redis-rocketmq-node3         ***(redis slave1)
+
+192.168.161.12    rocketmq-broker-m1
+192.168.161.51    rocketmq-broker-m2
+192.168.161.52    rocketmq-broker-m3
+
+------------------------------------------
+
+
+redis集群安装
+
+root操作
+firewall-cmd --zone=public --add-port=26379/tcp --permanent
+firewall-cmd --zone=public --add-port=6379/tcp --permanent
+firewall-cmd --reload 
+firewall-cmd --zone=public --list-ports
+
+创建操作系统用户(root)
+
+groupadd redis && useradd -g redis redis
+passwd redis   ###（根据环境自定义密码） Passc0de!
+
+
+mkdir -p /opt/redis
+chown -R redis:redis /opt/redis
+
+修改系统参数：
+vi /etc/sysctl.conf
+
+添加一行：
+vm.overcommit_memory = 1
+
+使系统参数生效
+sysctl -p
+
+-----------
+
+临时方法：
+echo never > /sys/kernel/mm/transparent_hugepage/enabled 
+永久方法：
+将上面一条命令写入rc.local文件
+vi /etc/rc.d/rc.local
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+
+chmod 777 /etc/rc.d/rc.local
+
+备注：必须用root用户执行 没有权限
+-----------
+
+切换到redis用户
+
+# su - redis
+cd /opt/redis
+
+mkdir -p /opt/redis/data && mkdir -p /opt/redis/app
+
+mkdir -p /opt/redis/data/redis1/ && mkdir -p /opt/redis/data/redis  &&  mkdir -p /opt/redis/data/sentinel
+
+cd /opt/redis/app
+上传安装包至当前目录
+tar -xvf redis-5.0.10.tar.gz
+cd /opt/redis/app/redis-5.0.10/
+make  (使用当前Makefile编译文件)  
+    #编译时报错 /bin/sh: cc: command not found
+    yum -y install gcc gcc-c++ libstdc++-devel
+
+    #编译时报错:fatal error: jemalloc/jemalloc.h: No such file or directory
+    yum install jemalloc
+        #rpm -ql jemalloc 查看jemalloc库的位置
+    make MALLOC=/usr/lib64/libjemalloc.so.1
+make test
+    #报错:You need tcl 8.5 or newer in order to run the Redis test
+    yum install -y tcl
+使用示例配置文件生成：
+cat  /opt/redis/app/redis-5.0.10/redis.conf | grep -v "#" |grep -v "^$" > /opt/redis/app/redis-5.0.10/redis1.conf（备注：此步骤可删除）
+
+cd /opt/redis/data/redis
+
+vim /opt/redis/data/redis/redis.conf
+
+！！！！！！注意 slave节点需要把备注的部分放开 ！！！！！！！
+##############Master################  修改bind
+bind 192.168.161.12
+protected-mode yes
+port 6379
+requirepass 123456
+masterauth 123456
+maxmemory 2GB
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+daemonize no
+supervised no
+pidfile /var/run/redis_1.pid
+loglevel notice
+logfile "/opt/redis/data/redis1/redis.log"
+databases 16
+always-show-logo yes
+save 10 1
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir /opt/redis/data/redis1/ 
+# 修改以下两个参数作为slave节点(备注：如果是slave节点,以下两行注释请去掉,replicaof改成master节点的IP )           
+# replicaof 12.0.217.157 6379
+# masterauth 123456
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly yes                
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz 10
+dynamic-hz yes
+aof-rewrite-incremental-fsync yes
+rdb-save-incremental-fsync yes
+
+-------------------------------
+Salve： 修改bind和replicaof
+
+#注意bind ip要修改
+bind 192.168.161.51
+protected-mode yes
+port 6379
+requirepass 123456
+masterauth 123456
+maxmemory 2GB
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+daemonize no
+supervised no
+pidfile /var/run/redis_1.pid
+loglevel notice
+logfile "/opt/redis/data/redis1/redis.log"
+databases 16
+always-show-logo yes
+save 10 1
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir /opt/redis/data/redis1/
+# 修改以下两个参数作为slave节点(备注：158, 159注释去掉 改成master节点的IP ) 
+replicaof 192.168.161.12 6379
+masterauth 123456
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly yes 
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz 10
+dynamic-hz yes
+aof-rewrite-incremental-fsync yes
+rdb-save-incremental-fsync yes
+
+非root启动redis:
+/opt/redis/app/redis-5.0.10/src/redis-server /opt/redis/data/redis/redis.conf &
+
+#验证:
+netstat -ntlp | grep 6379
+
+
+三个节点都需要修改sentinel.conf
+vim /opt/redis/data/sentinel/sentinel.conf
+sentinel.conf内容：
+#########################################
+port 26379
+daemonize no
+protected-mode no
+pidfile /var/run/redis-sentinel.pid
+logfile "/opt/redis/data/sentinel/sentinel.log"
+dir /opt/redis/data/sentinel/
+sentinel monitor zjzbMaster 192.168.161.51 6379 2
+sentinel auth-pass zjzbMaster 123456
+sentinel down-after-milliseconds zjzbMaster 30000
+sentinel parallel-syncs zjzbMaster 1
+sentinel failover-timeout zjzbMaster 180000
+sentinel deny-scripts-reconfig yes
+########################################
+
+非root启动sentinel:
+/opt/redis/app/redis-5.0.10/src/redis-server /opt/redis/data/sentinel/sentinel.conf --sentinel &
+
+##问题: 集群一开始没起来 需要把redis.conf和sentinel.conf全部改成主节点的
+
+连接到主节点  能看到两个从节点
+/opt/redis/app/redis-5.0.10/src/redis-cli -h 192.168.161.12 -p 6379
+auth 123456
+info replication
+
+================================ C-redis ending ================================
+
+
+
+
+
+
+
+================================ A 生产环境 Mongodb 集群 beginning ================================
+机器：
+192.168.161.9:37017
+192.168.161.10:37017
+192.168.161.11:37017
+
+连接集群：
+mongo --host jxrtRS/192.168.161.9:37017,192.168.161.10:37017,192.168.161.11:37017 -uccbscf_app -p ccbscf@M0NG0 --authenticationDatabase admin
+
+# 使用mongo客户端连接relica set进行测试
+mongo --host jxrtRS/192.168.161.9:37017,192.168.161.10:37017,192.168.161.11:37017 -uroot -p r00t@M0NG0 --authenticationDatabase admin
+
+
+###与科创MongoDB安装手册一致###
+
+/data/mongodb/conf
+/data/mongodb/data
+/data/mongodb/log
+/data/mongodb/pid
+
+#安装目录脚本,已配置环境变量
+/opt/mongodb/bin/
+
+
+db.auth('root', 'r00t@M0NG0')
+db.auth('rsadmin', 'rs@dmin@M0NG0')
+db.auth('ccbscf_app', 'ccbscf@M0NG0')
+
+
+=====================================环境配置==================================
+yum源: 测试、预生产？、生产已打通
+yum源地址改为： http://192.168.160.125:8080/local-yum/
 
