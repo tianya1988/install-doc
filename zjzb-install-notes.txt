@@ -190,6 +190,8 @@ sudo su -   #(临时切到root权限，否则前三条权限不够)
     /bin/sed -i "s/.*swap.*/#&/" /etc/fstab
     /bin/sed -i "s/.*swappiness.*/#&/" /etc/sysctl.conf
     /bin/echo -e "vm.swappiness = 0" >> /etc/sysctl.conf
+
+    sysctl -p
 exit  #退出root用户
 
 2.6	开启IP转发(只在运行K8S相关组件的服务器上执行)
@@ -199,6 +201,8 @@ cat >> /etc/sysctl.conf << EOF
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-iptables = 1
 EOF
+
+sysctl -p
 exit  #退出root用户
 
 
@@ -650,7 +654,7 @@ cat /data/nfsdata/log/test.txt   #内容同样为 zxl
 
 
 
-================================ C-RocketMQ 多master集群 beginning ================================
+================================ C-RocketMQ 多master集群模式 beginning ================================
 --------------
 #预生产
 192.168.160.5  
@@ -744,7 +748,7 @@ vim /data/rocketmq/conf/2m-noslave/broker-c.properties
 
 --------------------------------
 brokerClusterName=rocketmq-3m-cluster
-brokerName=rocketmq-broker-m1  ########## rocketmq-broker-m1 或者 rocketmq-broker-m1 #############
+brokerName=rocketmq-broker-m1  ########## rocketmq-broker-m2 或者 rocketmq-broker-m3 #############
 brokerId=0
 namesrvAddr=192.168.160.5:9876;192.168.160.77:9876;192.168.160.78:9876
 defaultTopicQueueNums=6
@@ -803,6 +807,96 @@ sh mqshutdown broker
 sh mqshutdown namesrv
 ================================ C-RocketMQ 多master集群 ending ================================
 
+
+
+================================ B-RocketMQ 主从集群模式 beginning ================================
+#生产环境:
+192.168.161.33
+192.168.161.34
+
+192.168.161.33    rocketmq-node1
+192.168.161.34    rocketmq-node2
+
+192.168.161.33    rocketmq-nameserver1
+192.168.161.33    rocketmq-master1
+192.168.161.34    rocketmq-nameserver2
+192.168.161.34    rocketmq-master1-slave
+
+vim /data/rocketmq/conf/2m-2s-async/broker-a.properties
+
+brokerClusterName=pulian-rocketmq-cluster
+brokerName=broker-a
+brokerId=0
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+defaultTopicQueueNums=4
+autoCreateTopicEnable=true
+autoCreateSubscriptionGroup=true
+listenPort=10911
+deleteWhen=04
+fileReservedTime=168
+mapedFileSizeCommitLog=1073741824
+mapedFileSizeConsumeQueue=300000
+diskMaxUsedSpaceRatio=88
+storePathRootDir=/data/mq-store
+storePathCommitLog=/data/mq-store/commitlog
+storePathConsumeQueue=/data/mq-store/consumequeue
+storePathIndex=/data/mq-store/index
+storeCheckpoint=/data/mq-store/checkpoint
+abortFile=/data/mq-store/abort
+maxMessageSize=65536
+brokerRole=ASYNC_MASTER
+flushDiskType=ASYNC_FLUSH
+
+
+vim /data/rocketmq/conf/2m-2s-async/broker-a-s.properties
+
+#所属集群名字
+brokerClusterName=pulian-rocketmq-cluster
+brokerName=broker-a
+brokerId=1
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+defaultTopicQueueNums=4
+autoCreateTopicEnable=true
+autoCreateSubscriptionGroup=true
+listenPort=10911
+deleteWhen=04
+fileReservedTime=120
+mapedFileSizeCommitLog=1073741824
+mapedFileSizeConsumeQueue=300000
+diskMaxUsedSpaceRatio=88
+storePathRootDir=/data/mq-store
+storePathCommitLog=/data/mq-store/commitlog
+storePathConsumeQueue=/data/mq-store/consumequeue
+storePathIndex=/data/mq-store/index
+storeCheckpoint=/data/mq-store/checkpoint
+abortFile=/data/mq-store/abort
+maxMessageSize=65536
+brokerRole=SLAVE
+flushDiskType=ASYNC_FLUSH
+
+sh mqnamesrv >> mqnamesrv.log 2>&1 &
+nohup sh mqbroker -c /data/rocketmq/conf/2m-2s-async/broker-a.properties >> mqbroker.log 2>&1 &
+
+sh mqnamesrv >> mqnamesrv.log 2>&1 &
+nohup sh mqbroker -c /data/rocketmq/conf/2m-2s-async/broker-a-s.properties >> mqbroker.log 2>&1 &
+
+
+#验证nameserver
+ps -ef | grep mqnamesrv
+netstat -ntlp | grep 9876
+
+#验证broker
+ps -ef | grep broker
+netstat -ntlp | grep 10911
+
+
+#关闭broker
+sh mqshutdown broker
+
+#关闭nameserver
+sh mqshutdown namesrv
+
+================================ B-RocketMQ 主从集群模式 ending ================================
 
 
 
@@ -1032,7 +1126,7 @@ dynamic-hz yes
 aof-rewrite-incremental-fsync yes
 rdb-save-incremental-fsync yes
 
-非root启动redis:
+非root启动redis服务器进程:
 /opt/redis/app/redis-5.0.10/src/redis-server /opt/redis/data/redis/redis.conf &
 
 #验证:
@@ -1049,7 +1143,7 @@ protected-mode no
 pidfile /var/run/redis-sentinel.pid
 logfile "/opt/redis/data/sentinel/sentinel.log"
 dir /opt/redis/data/sentinel/
-sentinel monitor zjzbMaster 192.168.161.51 6379 2
+sentinel monitor zjzbMaster 192.168.161.12 6379 2
 sentinel auth-pass zjzbMaster 123456
 sentinel down-after-milliseconds zjzbMaster 30000
 sentinel parallel-syncs zjzbMaster 1
@@ -1057,7 +1151,7 @@ sentinel failover-timeout zjzbMaster 180000
 sentinel deny-scripts-reconfig yes
 ########################################
 
-非root启动sentinel:
+非root启动哨兵进程:
 /opt/redis/app/redis-5.0.10/src/redis-server /opt/redis/data/sentinel/sentinel.conf --sentinel &
 
 ##问题: 集群一开始没起来 需要把redis.conf和sentinel.conf全部改成主节点的
@@ -1102,6 +1196,87 @@ mongo --host jxrtRS/192.168.161.9:37017,192.168.161.10:37017,192.168.161.11:3701
 db.auth('root', 'r00t@M0NG0')
 db.auth('rsadmin', 'rs@dmin@M0NG0')
 db.auth('ccbscf_app', 'ccbscf@M0NG0')
+
+
+
+=========================C 大智慧=================================
+firewall-cmd --zone=public --add-port=8801/tcp --permanent
+firewall-cmd --zone=public --add-port=5000/tcp --permanent
+够了.
+
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="127.0.0.1" accept"
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="192.168.160.23" accept"
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.4.185" accept
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="210.51.22.233" accept
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="118.244.199.41" accet"
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.21" accept
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.20" accept
+firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.20" accept"
+
+
+firewall-cmd --zone=public --permanent --remove-rich-rule="rule family="ipv4" source address="10.1.30.135" accept"
+
+firewall-cmd --reload
+firewall-cmd --list-port
+----
+开发环境10.1.20.53
+数据库:
+root/Dev123!@#
+----
+预生产环境:192.168.160.23
+数据库:
+root/Zjzb123!@#
+create database finchina default character set utf8 collate utf8_general_ci;
+CREATE USER fcdb@'%' IDENTIFIED BY 'fcdb';
+GRANT ALL PRIVILEGES ON finchina.* TO 'fcdb'@'%' WITH GRANT OPTION;
+flush privileges;
+
+----
+生产环境:192.168.161.98
+数据库:
+root/Zjzb123!@#
+create database finchina default character set utf8 collate utf8_general_ci;
+CREATE USER fcdb@'%' IDENTIFIED BY 'fcdb';
+GRANT ALL PRIVILEGES ON finchina.* TO 'fcdb'@'%' WITH GRANT OPTION;
+flush privileges;
+
+-------
+
+
+
+sudo systemctl stop firewalld
+
+#配置hosts,以防配置中含有此域名
+222.73.12.20    entapi.finchina.com
+
+关闭bin-log,重启mysql
+sudo service mysqld stop
+sudo service mysqld status
+sudo service mysqld start
+
+mysql> show variables like 'log_bin';  #OFF
+
+
+cd /data/install-packages/finchina/FCDT3.5_LINUX-mysql/fcdtdown
+命令：nohup ./fcdtdown &
+查看日志:
+/data/install-packages/finchina/FCDT3.5_LINUX-mysql/fcdtdown/logs/
+moddownflow.log
+
+
+cd /data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entService_linux-x64
+nohup dotnet entService.dll &
+查看日志:
+/data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entService_linux-x64/logs
+
+
+cd /data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entConsole_linux-x64
+nohup dotnet entConsole.dll --urls=http://*:5000 &
+
+
+
+
+
 
 
 =====================================环境配置==================================
