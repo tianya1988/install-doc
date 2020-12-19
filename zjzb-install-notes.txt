@@ -184,8 +184,8 @@ sudo su -   #(临时切到root权限，否则前三条权限不够)
 exit  #退出root用户
 
 
-2.5	禁用SWAP(只在运行K8S相关组件的服务器上执行)
-sudo su -   #(临时切到root权限，否则前三条权限不够)
+2.5	禁用SWAP
+sudo su -   #(临时切到root权限)
     swapoff -a
     /bin/sed -i "s/.*swap.*/#&/" /etc/fstab
     /bin/sed -i "s/.*swappiness.*/#&/" /etc/sysctl.conf
@@ -194,8 +194,8 @@ sudo su -   #(临时切到root权限，否则前三条权限不够)
     sysctl -p
 exit  #退出root用户
 
-2.6	开启IP转发(只在运行K8S相关组件的服务器上执行)
-sudo su -   #(临时切到root权限，否则前三条权限不够)
+2.6	开启IP转发
+sudo su -   #(临时切到root权限)
 #必须顶格写
 cat >> /etc/sysctl.conf << EOF
 net.ipv4.ip_forward = 1
@@ -213,9 +213,9 @@ sudo rpm -ivh *.rpm --force --nodeps
 
 
 第二步：配置docker registry
-sudo mkdir -p /etc/docker/
-sudo touch /etc/docker/daemon.json
 sudo su -
+mkdir -p /etc/docker/
+touch /etc/docker/daemon.json
 
 #开发、测试、准生产如下：
 cat > /etc/docker/daemon.json<<EOF
@@ -270,7 +270,7 @@ curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://
  }
 
 
-2.8	配置java环境
+2.8	配置jdk环境
 #第一步：解压文件到对应目录
 #tar -zxvf /data/install-tools/jdk-8u131-linux-x64.tar.gz -C /usr/java/
   
@@ -283,6 +283,13 @@ curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://
     export JAVA_PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin
     export PATH=$PATH:${JAVA_PATH}
 
+    #生产环境如下:
+    export JAVA_HOME=/data/java
+    export JRE_HOME=${JAVA_HOME}/jre
+    export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib:$CLASSPATH
+    export JAVA_PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin
+    export PATH=$PATH:${JAVA_PATH}
+
 第三步：加载环境变量
 #source /etc/profile
 
@@ -290,9 +297,22 @@ curl -u "admin:Harbor12345" -X POST -H "Content-Type: application/json" "http://
     ll /usr/bin/java
     rm /usr/bin/java
     sudo ln -s  /data/jdk1.8.0_131/bin/java  /usr/bin/java
+    
+    #生产环境
+    sudo ln -s  /data/java/bin/java  /usr/bin/java
+
+
+# 检查ntp服务是否正常
+ntpq -p
+
+     remote           refid      st t when poll reach   delay   offset  jitter
+==============================================================================
+*192.168.2.91    185.255.55.20    3 u  418 1024  377    1.206    1.033   0.799
+ LOCAL(0)        .LOCL.          10 l  12d   64    0    0.000    0.000   0.000
 
 
 4.2	部署集群环境
+上传安装 k8s-install.zip
 
 chmod 777 /data/ccbscf
 sudo cp /data/ccbscf /usr/bin/sealos
@@ -822,6 +842,41 @@ sh mqshutdown namesrv
 192.168.161.34    rocketmq-nameserver2
 192.168.161.34    rocketmq-master1-slave
 
+关闭防火墙:
+    sudo systemctl stop firewalld
+    sudo systemctl disable firewalld
+    sudo systemctl status firewalld
+
+配置jdk环境：
+sudo vim /etc/profile
+    export JAVA_HOME=/data/java
+    export PATH=$PATH:${JAVA_HOME}/bin
+
+    ll /usr/bin/java
+    rm /usr/bin/java
+    sudo ln -s  /data/java/bin/java  /usr/bin/java
+
+在/data目录下:
+    unzip rocketmq-all-4.7.1-bin-release.zip
+    mv rocketmq-all-4.7.1-bin-release rocketmq
+
+酌情修改启动占用内存:
+vim /data/rocketmq/bin/runbroker.sh   #(此环境未做修改,默认值如下)
+    JAVA_OPT="${JAVA_OPT} -server -Xms8g -Xmx8g -Xmn4g"
+
+#创建日志目录
+mkdir -p /data/logs
+替换日志目录配置:(把xml文件中的 '${user.home}' 替换为 '/data')
+sed -i  's#${user.home}#/data#g'  /data/rocketmq/conf/*.xml
+
+#创建数据目录:
+mkdir -p /data/mq-store
+mkdir -p /data/mq-store/commitlog
+mkdir -p /data/mq-store/consumequeue
+mkdir -p /data/mq-store/index
+mkdir -p /data/mq-store/abort
+
+在192.168.161.33机器上:
 vim /data/rocketmq/conf/2m-2s-async/broker-a.properties
 
 brokerClusterName=pulian-rocketmq-cluster
@@ -847,7 +902,7 @@ maxMessageSize=65536
 brokerRole=ASYNC_MASTER
 flushDiskType=ASYNC_FLUSH
 
-
+在192.168.161.34机器上:
 vim /data/rocketmq/conf/2m-2s-async/broker-a-s.properties
 
 #所属集群名字
@@ -873,6 +928,7 @@ abortFile=/data/mq-store/abort
 maxMessageSize=65536
 brokerRole=SLAVE
 flushDiskType=ASYNC_FLUSH
+
 
 sh mqnamesrv >> mqnamesrv.log 2>&1 &
 nohup sh mqbroker -c /data/rocketmq/conf/2m-2s-async/broker-a.properties >> mqbroker.log 2>&1 &
@@ -900,6 +956,108 @@ sh mqshutdown namesrv
 
 
 
+================================ B-elasticsearch 集群 beginning ================================
+暂时关闭防火墙
+sudo systemctl stop firewalld
+sudo systemctl disable firewalld
+sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+sudo setenforce 0
+
+
+
+sudo vim /etc/hosts
+192.168.161.40  node1
+192.168.161.41  node2
+192.168.161.42  node3
+
+
+
+sudo vim /etc/profile
+export JAVA_HOME=/data/java
+export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
+export PATH=$PATH:$JAVA_HOME/bin
+
+#检查NTP服务是否正常
+ntpq -p
+
+#修改系统参数
+sudo echo '* soft nofile 655360'>> /etc/security/limits.conf
+sudo echo '* hard nofile 655360'>> /etc/security/limits.conf
+sudo echo '* hard nproc  40960'>> /etc/security/limits.conf
+sudo echo '* soft nproc  40960'>> /etc/security/limits.conf
+sudo echo 'app soft memlock unlimited' >> /etc/security/limits.conf
+sudo echo 'app hard memlock unlimited' >> /etc/security/limits.conf
+
+
+sudo echo 'vm.swappiness=1' >> /etc/sysctl.conf
+sudo echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+
+#sysctl配置生效
+sysctl -p
+
+#用户退出再登录limits.conf参数生效
+
+mkdir -p /data/es-data/data
+mkdir -p /data/es-data/logs
+
+vim /data/elasticsearch/config/jvm.options
+-Xms16g
+-Xmx16g
+
+#192.168.161.40  node1 上
+vim /data/elasticsearch/config/elasticsearch.yml
+
+cluster.name: zjzb-pl-cluster
+node.name: node1
+node.master: true
+node.data: true
+node.max_local_storage_nodes: 3
+path.data: /data/es-data/data
+path.logs: /data/es-data/logs
+network.host: node1
+http.port: 9200
+transport.tcp.port: 9300
+cluster.initial_master_nodes: ["node1"]
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+cluster.routing.allocation.same_shard.host: true
+bootstrap.memory_lock: true
+gateway.recover_after_master_nodes: 2
+gateway.recover_after_data_nodes: 2
+discovery.zen.ping.unicast.hosts: ["node1", "node2","node3"]
+
+---------------
+#192.168.161.41  node2 上
+vim /data/elasticsearch/config/elasticsearch.yml
+
+cluster.name: zjzb-pl-cluster
+node.name: node2
+node.master: true
+node.data: true
+node.max_local_storage_nodes: 3
+path.data: /data/es-data/data
+path.logs: /data/es-data/logs
+network.host: node2
+http.port: 9200
+transport.tcp.port: 9300
+cluster.initial_master_nodes: ["node1"]
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+cluster.routing.allocation.same_shard.host: true
+bootstrap.memory_lock: true
+gateway.recover_after_master_nodes: 2
+gateway.recover_after_data_nodes: 2
+discovery.zen.ping.unicast.hosts: ["node1", "node2","node3"]
+
+-----------
+#192.168.161.42  node3 上
+vim /data/elasticsearch/config/elasticsearch.yml
+#大致内容同node2
+
+
+/data/elasticsearch/bin/elasticsearch -d
+
+================================ B-elasticsearch 集群 ending ================================
 
 ================================ C-redis beginning ================================
 #生产环境
@@ -1202,16 +1360,8 @@ db.auth('ccbscf_app', 'ccbscf@M0NG0')
 =========================C 大智慧=================================
 firewall-cmd --zone=public --add-port=8801/tcp --permanent
 firewall-cmd --zone=public --add-port=5000/tcp --permanent
-够了.
 
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="127.0.0.1" accept"
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="192.168.160.23" accept"
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.4.185" accept
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="210.51.22.233" accept
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="118.244.199.41" accet"
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.21" accept
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.20" accept
-firewall-cmd --zone=public --permanent --add-rich-rule="rule family="ipv4" source address="222.73.12.20" accept"
+sudo service mysqld start
 
 
 firewall-cmd --zone=public --permanent --remove-rich-rule="rule family="ipv4" source address="10.1.30.135" accept"
@@ -1221,28 +1371,38 @@ firewall-cmd --list-port
 ----
 开发环境10.1.20.53
 数据库:
+10.1.20.68
 root/Dev123!@#
+fcdb/fcdb  finchina
 ----
 预生产环境:192.168.160.23
 数据库:
 root/Zjzb123!@#
+fcdb/fcdb  finchina
 create database finchina default character set utf8 collate utf8_general_ci;
 CREATE USER fcdb@'%' IDENTIFIED BY 'fcdb';
 GRANT ALL PRIVILEGES ON finchina.* TO 'fcdb'@'%' WITH GRANT OPTION;
 flush privileges;
+
+firewall-cmd --zone=public --add-port=8801/tcp --permanent
+firewall-cmd --zone=public --add-port=5000/tcp --permanent
+firewall-cmd --zone=public --add-port=3306/tcp --permanent
 
 ----
 生产环境:192.168.161.98
 数据库:
 root/Zjzb123!@#
+fcdb/fcdb  finchina
 create database finchina default character set utf8 collate utf8_general_ci;
 CREATE USER fcdb@'%' IDENTIFIED BY 'fcdb';
 GRANT ALL PRIVILEGES ON finchina.* TO 'fcdb'@'%' WITH GRANT OPTION;
 flush privileges;
 
+firewall-cmd --zone=public --add-port=8801/tcp --permanent
+firewall-cmd --zone=public --add-port=5000/tcp --permanent
+firewall-cmd --zone=public --add-port=3306/tcp --permanent
+
 -------
-
-
 
 sudo systemctl stop firewalld
 
@@ -1258,24 +1418,22 @@ mysql> show variables like 'log_bin';  #OFF
 
 
 cd /data/install-packages/finchina/FCDT3.5_LINUX-mysql/fcdtdown
-命令：nohup ./fcdtdown &
+命令：
+nohup ./fcdtdown > /data/install-packages/finchina/FCDT3.5_LINUX-mysql/fcdtdown/fcdtdown-nohup.log 2>&1 &
+
 查看日志:
 /data/install-packages/finchina/FCDT3.5_LINUX-mysql/fcdtdown/logs/
 moddownflow.log
 
 
 cd /data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entService_linux-x64
-nohup dotnet entService.dll &
+nohup dotnet entService.dll > entService-nohup.log 2>&1 &
 查看日志:
 /data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entService_linux-x64/logs
 
 
 cd /data/install-packages/finchina/ent-server/ent2.1.12_linux_x64/entConsole_linux-x64
-nohup dotnet entConsole.dll --urls=http://*:5000 &
-
-
-
-
+nohup dotnet entConsole.dll --urls=http://*:5000 > entConsole-nohup.log 2>&1 &
 
 
 
